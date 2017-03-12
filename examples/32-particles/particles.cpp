@@ -210,8 +210,8 @@ struct Emitter
 		ImGuizmo::Manipulate(
 				_view
 				, _proj
-				, ImGuizmo::OPERATION::TRANSLATE
-				, ImGuizmo::MODE::LOCAL
+				, ImGuizmo::TRANSLATE
+				, ImGuizmo::LOCAL
 				, mtx
 				);
 
@@ -249,9 +249,23 @@ class Particles : public entry::AppI
 
 		psInit();
 
+		bgfx::ImageContainer* image = imageLoad(
+			  "textures/particle.ktx"
+			, bgfx::TextureFormat::BGRA8
+			);
+
+		EmitterSpriteHandle sprite = psCreateSprite(
+				  uint16_t(image->m_width)
+				, uint16_t(image->m_height)
+				, image->m_data
+				);
+
+		bgfx::imageFree(image);
+
 		for (uint32_t ii = 0; ii < BX_COUNTOF(m_emitter); ++ii)
 		{
 			m_emitter[ii].create();
+			m_emitter[ii].m_uniforms.m_handle = sprite;
 		}
 
 		imguiCreate();
@@ -329,7 +343,7 @@ class Particles : public entry::AppI
 			}
 			else
 			{
-				bx::mtxProj(proj, 60.0f, float(m_width)/float(m_height), 0.1f, 100.0f);
+				bx::mtxProj(proj, 60.0f, float(m_width)/float(m_height), 0.1f, 100.0f, bgfx::getCaps()->homogeneousDepth);
 
 				bgfx::setViewTransform(0, view, proj);
 				bgfx::setViewRect(0, 0, 0, m_width, m_height);

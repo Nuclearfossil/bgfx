@@ -190,6 +190,8 @@ width="640" height="480" border="0" /></a>
 https://github.com/degenerated1123/REGoth - Open source reimplementation of the
 zEngine, used by the game "Gothic" and "Gothic II".
 
+Browser demo: http://gothic-dx11.de/gothic-js/REGoth.html
+
 <a href="http://www.youtube.com/watch?feature=player_embedded&v=8bLAGttYYpY
 " target="_blank"><img src="http://img.youtube.com/vi/8bLAGttYYpY/0.jpg" 
 alt="REGoth Engine"
@@ -216,6 +218,12 @@ width="640" height="480" border="0" /></a>
 https://github.com/s1ddok/Fiber2D#fiber2d - Fiber2D - Cross-platform 2D Game
 Engine in pure Swift  
 ![Fiber2D Demo Gif](http://imgur.com/CP6d9kT.gif)
+
+## On the Hunt
+
+http://www.indiedb.com/games/on-the-hunt - On the Hunt is an open world hunting
+game in development. It's a combination of FPS and stealth.  
+![On the Hunt](http://media.indiedb.com/images/downloads/1/120/119448/img.png)
 
 [License (BSD 2-clause)](https://bkaradzic.github.io/bgfx/license.html)
 -----------------------------------------------------------------------

@@ -8,6 +8,7 @@
 BX_PRAGMA_DIAGNOSTIC_PUSH()
 BX_PRAGMA_DIAGNOSTIC_IGNORED_MSVC(4100) // error C4100: 'inclusionDepth' : unreferenced formal parameter
 BX_PRAGMA_DIAGNOSTIC_IGNORED_MSVC(4265) // error C4265: 'spv::spirvbin_t': class has virtual functions, but destructor is not virtual
+BX_PRAGMA_DIAGNOSTIC_IGNORED_CLANG_GCC("-Wshadow") // warning: declaration of 'userData' shadows a member of 'glslang::TShader::Includer::IncludeResult'
 #include <ShaderLang.h>
 #include <ResourceLimits.h>
 #include <SPIRV/SPVRemapper.h>
@@ -645,12 +646,57 @@ namespace bgfx { namespace spirv
 			}
 			else
 			{
-//				program->buildReflection();
-//				fprintf(stderr, "attributes %d, uniforms %d\n"
-//					, program->getNumLiveAttributes()
-//					, program->getNumLiveUniformVariables()
-//					);
-//				program->dumpReflection();
+				program->buildReflection();
+				{
+					uint16_t count = (uint16_t)program->getNumLiveUniformVariables();
+					bx::write(_writer, count);
+
+					uint32_t fragmentBit = profile[0] == 'p' ? BGFX_UNIFORM_FRAGMENTBIT : 0;
+					for (uint16_t ii = 0; ii < count; ++ii)
+					{
+						Uniform un;
+						un.name = program->getUniformName(ii);
+						switch (program->getUniformType(ii))
+						{
+						case 0x1404: // GL_INT:
+							un.type = UniformType::Int1;
+							break;
+						case 0x8B52: // GL_FLOAT_VEC4:
+							un.type = UniformType::Vec4;
+							break;
+						case 0x8B5B: // GL_FLOAT_MAT3:
+							un.type = UniformType::Mat3;
+							break;
+						case 0x8B5C: // GL_FLOAT_MAT4:
+							un.type = UniformType::Mat4;
+							break;
+						default:
+							un.type = UniformType::End;
+							break;
+						}
+						un.num = uint8_t(program->getUniformArraySize(ii) );
+						un.regIndex = 0;
+						un.regCount = un.num;
+
+						uint8_t nameSize = (uint8_t)un.name.size();
+						bx::write(_writer, nameSize);
+						bx::write(_writer, un.name.c_str(), nameSize);
+						uint8_t type = uint8_t(un.type | fragmentBit);
+						bx::write(_writer, type);
+						bx::write(_writer, un.num);
+						bx::write(_writer, un.regIndex);
+						bx::write(_writer, un.regCount);
+
+						BX_TRACE("%s, %s, %d, %d, %d"
+							, un.name.c_str()
+							, getUniformTypeName(un.type)
+							, un.num
+							, un.regIndex
+							, un.regCount
+						);
+					}
+				}
+				program->dumpReflection();
 
 				BX_UNUSED(spv::MemorySemanticsAllMemory);
 

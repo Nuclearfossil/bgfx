@@ -64,27 +64,34 @@ namespace glslang {
         void unimplemented(const char*);
         bool acceptIdentifier(HlslToken&);
         bool acceptCompilationUnit();
-        bool acceptDeclaration(TIntermNode*& node);
+        bool acceptDeclaration(TIntermNode*&);
         bool acceptControlDeclaration(TIntermNode*& node);
         bool acceptSamplerDeclarationDX9(TType&);
         bool acceptSamplerState();
         bool acceptFullySpecifiedType(TType&);
+        bool acceptFullySpecifiedType(TType&, TIntermNode*& nodeList);
         bool acceptQualifier(TQualifier&);
         bool acceptLayoutQualifierList(TQualifier&);
         bool acceptType(TType&);
+        bool acceptType(TType&, TIntermNode*& nodeList);
         bool acceptTemplateVecMatBasicType(TBasicType&);
         bool acceptVectorTemplateType(TType&);
         bool acceptMatrixTemplateType(TType&);
+        bool acceptTessellationDeclType();
+        bool acceptTessellationPatchTemplateType(TType&);
         bool acceptStreamOutTemplateType(TType&, TLayoutGeometry&);
         bool acceptOutputPrimitiveGeometry(TLayoutGeometry&);
         bool acceptAnnotations(TQualifier&);
         bool acceptSamplerType(TType&);
         bool acceptTextureType(TType&);
-        bool acceptStruct(TType&);
-        bool acceptStructDeclarationList(TTypeList*&);
+        bool acceptStructBufferType(TType&);
+        bool acceptStruct(TType&, TIntermNode*& nodeList);
+        bool acceptStructDeclarationList(TTypeList*&, TIntermNode*& nodeList, const TString& typeName);
+        bool acceptMemberFunctionDefinition(TIntermNode*& nodeList, const TString& typeName,
+                                            const TType&, const TString& memberName);
         bool acceptFunctionParameters(TFunction&);
         bool acceptParameterDeclaration(TFunction&);
-        bool acceptFunctionDefinition(TFunction&, TIntermNode*&, const TAttributeMap&);
+        bool acceptFunctionDefinition(TFunction&, TIntermNode*& nodeList, const TAttributeMap&);
         bool acceptParenExpression(TIntermTyped*&);
         bool acceptExpression(TIntermTyped*&);
         bool acceptInitializer(TIntermTyped*&);
@@ -94,7 +101,8 @@ namespace glslang {
         bool acceptUnaryExpression(TIntermTyped*&);
         bool acceptPostfixExpression(TIntermTyped*&);
         bool acceptConstructor(TIntermTyped*&);
-        bool acceptFunctionCall(HlslToken, TIntermTyped*&, TIntermTyped* base = nullptr);
+        bool acceptFunctionCall(HlslToken, TIntermTyped*&, TIntermTyped* objectBase = nullptr,
+                                const TSymbol* typeBase = nullptr);
         bool acceptArguments(TFunction*, TIntermTyped*&);
         bool acceptLiteral(TIntermTyped*&);
         bool acceptCompoundStatement(TIntermNode*&);
@@ -110,7 +118,7 @@ namespace glslang {
         bool acceptCaseLabel(TIntermNode*&);
         bool acceptDefaultLabel(TIntermNode*&);
         void acceptArraySpecifier(TArraySizes*&);
-        void acceptPostDecls(TQualifier&);
+        bool acceptPostDecls(TQualifier&);
         bool acceptDefaultParameterDeclaration(const TType&, TIntermTyped*&);
 
         HlslParseContext& parseContext;  // state of parsing and helper functions for building the intermediate

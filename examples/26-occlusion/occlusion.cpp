@@ -190,7 +190,7 @@ class ExampleOcclusion : public entry::AppI
 			else
 			{
 				float proj[16];
-				bx::mtxProj(proj, 90.0f, float(width)/float(height), 0.1f, 10000.0f);
+				bx::mtxProj(proj, 90.0f, float(width)/float(height), 0.1f, 10000.0f, bgfx::getCaps()->homogeneousDepth);
 
 				bgfx::setViewTransform(0, view, proj);
 				bgfx::setViewRect(0, 0, 0, width, height);
@@ -255,6 +255,10 @@ class ExampleOcclusion : public entry::AppI
 			{
 				bgfx::dbgTextImage(5 + xx*2, 5, 1, CUBES_DIM, img + xx*2, CUBES_DIM*2);
 			}
+
+			int32_t numPixels = 0;
+			bgfx::getResult(m_occlusionQueries[0], &numPixels);
+			bgfx::dbgTextPrintf(5, 5 + CUBES_DIM + 1, 0xf, "%d", numPixels);
 
 			// Advance to next frame. Rendering thread will be kicked to
 			// process submitted rendering primitives.
