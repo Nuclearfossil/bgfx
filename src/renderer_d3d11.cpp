@@ -287,7 +287,7 @@ namespace bgfx { namespace d3d11
 		{ DXGI_FORMAT_B4G4R4A4_UNORM,     DXGI_FORMAT_B4G4R4A4_UNORM,        DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_UNKNOWN             }, // RGBA4
 		{ DXGI_FORMAT_B5G5R5A1_UNORM,     DXGI_FORMAT_B5G5R5A1_UNORM,        DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_UNKNOWN             }, // RGB5A1
 		{ DXGI_FORMAT_R10G10B10A2_UNORM,  DXGI_FORMAT_R10G10B10A2_UNORM,     DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_UNKNOWN             }, // RGB10A2
-		{ DXGI_FORMAT_R11G11B10_FLOAT,    DXGI_FORMAT_R11G11B10_FLOAT,       DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_UNKNOWN             }, // R11G11B10F
+		{ DXGI_FORMAT_R11G11B10_FLOAT,    DXGI_FORMAT_R11G11B10_FLOAT,       DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_UNKNOWN             }, // RG11B10F
 		{ DXGI_FORMAT_UNKNOWN,            DXGI_FORMAT_UNKNOWN,               DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_UNKNOWN             }, // UnknownDepth
 		{ DXGI_FORMAT_R16_TYPELESS,       DXGI_FORMAT_R16_UNORM,             DXGI_FORMAT_D16_UNORM,         DXGI_FORMAT_UNKNOWN             }, // D16
 		{ DXGI_FORMAT_R24G8_TYPELESS,     DXGI_FORMAT_R24_UNORM_X8_TYPELESS, DXGI_FORMAT_D24_UNORM_S8_UINT, DXGI_FORMAT_UNKNOWN             }, // D24
@@ -453,6 +453,35 @@ namespace bgfx { namespace d3d11
 			|| _hr == DXGI_ERROR_DRIVER_INTERNAL_ERROR
 			|| _hr == DXGI_ERROR_NOT_CURRENTLY_AVAILABLE
 			;
+	}
+
+	static const char* getLostReason(HRESULT _hr)
+	{
+		switch (_hr)
+		{
+		// The GPU device instance has been suspended. Use GetDeviceRemovedReason to determine the appropriate action.
+		case DXGI_ERROR_DEVICE_REMOVED: return "DXGI_ERROR_DEVICE_REMOVED";
+
+		// The GPU will not respond to more commands, most likely because of an invalid command passed by the calling application.
+		case DXGI_ERROR_DEVICE_HUNG: return "DXGI_ERROR_DEVICE_HUNG";
+
+		// The GPU will not respond to more commands, most likely because some other application submitted invalid commands.
+		// The calling application should re-create the device and continue.
+		case DXGI_ERROR_DEVICE_RESET: return "DXGI_ERROR_DEVICE_RESET";
+
+		// An internal issue prevented the driver from carrying out the specified operation. The driver's state is probably
+		// suspect, and the application should not continue.
+		case DXGI_ERROR_DRIVER_INTERNAL_ERROR: return "DXGI_ERROR_DRIVER_INTERNAL_ERROR";
+
+		// A resource is not available at the time of the call, but may become available later.
+		case DXGI_ERROR_NOT_CURRENTLY_AVAILABLE: return "DXGI_ERROR_NOT_CURRENTLY_AVAILABLE";
+
+		case S_OK: return "S_OK";
+
+		default: break;
+		}
+
+		return "Unknown HRESULT?";
 	}
 
 	template <typename Ty>
@@ -654,7 +683,7 @@ namespace bgfx { namespace d3d11
 			, m_adapter(NULL)
 			, m_factory(NULL)
 			, m_swapChain(NULL)
-			, m_lost(0)
+			, m_lost(false)
 			, m_numWindows(0)
 			, m_device(NULL)
 			, m_deviceCtx(NULL)
@@ -945,7 +974,7 @@ namespace bgfx { namespace d3d11
 								}
 
 								if (BX_ENABLED(BGFX_CONFIG_DEBUG_PERFHUD)
-								&&  0 != strstr(description, "PerfHUD") )
+								&&  0 != bx::strFind(description, "PerfHUD") )
 								{
 									m_adapter = adapter;
 									m_driverType = D3D_DRIVER_TYPE_REFERENCE;
@@ -1264,8 +1293,19 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 					{
 						D3D11_MESSAGE_CATEGORY_STATE_CREATION,
 					};
+
 					filter.DenyList.NumCategories = BX_COUNTOF(catlist);
 					filter.DenyList.pCategoryList = catlist;
+
+					D3D11_MESSAGE_ID idlist[] =
+					{
+						D3D11_MESSAGE_ID_DEVICE_DRAW_RENDERTARGETVIEW_NOT_SET,
+						D3D11_MESSAGE_ID_QUERY_BEGIN_ABANDONING_PREVIOUS_RESULTS,
+					};
+
+					filter.DenyList.NumIDs  = BX_COUNTOF(idlist);
+					filter.DenyList.pIDList = idlist;
+
 					m_infoQueue->PushStorageFilter(&filter);
 
 					DX_RELEASE(m_infoQueue, 3);
@@ -1386,7 +1426,7 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 				{
 					uint16_t support = BGFX_CAPS_FORMAT_TEXTURE_NONE;
 
-					const DXGI_FORMAT fmt = isDepth(TextureFormat::Enum(ii) )
+					const DXGI_FORMAT fmt = bimg::isDepth(bimg::TextureFormat::Enum(ii) )
 						? s_textureFormat[ii].m_fmtDsv
 						: s_textureFormat[ii].m_fmt
 						;
@@ -1861,7 +1901,7 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 			uint8_t* src       = (uint8_t*)mapped.pData;
 			uint32_t srcPitch  = mapped.RowPitch;
 
-			const uint8_t bpp = getBitsPerPixel(TextureFormat::Enum(texture.m_textureFormat) );
+			const uint8_t bpp = bimg::getBitsPerPixel(bimg::TextureFormat::Enum(texture.m_textureFormat) );
 			uint8_t* dst      = (uint8_t*)_data;
 			uint32_t dstPitch = srcWidth*bpp/8;
 
@@ -2026,7 +2066,7 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 
 				D3D11_MAPPED_SUBRESOURCE mapped;
 				DX_CHECK(m_deviceCtx->Map(texture, 0, D3D11_MAP_READ, 0, &mapped) );
-				imageSwizzleBgra8(
+				bimg::imageSwizzleBgra8(
 					  mapped.pData
 					, backBufferDesc.Width
 					, backBufferDesc.Height
@@ -2059,9 +2099,9 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 					);
 			}
 
-			bx::strlcpy(&s_viewName[_id][BGFX_CONFIG_MAX_VIEW_NAME_RESERVED]
-				, _name
+			bx::strCopy(&s_viewName[_id][BGFX_CONFIG_MAX_VIEW_NAME_RESERVED]
 				, BX_COUNTOF(s_viewName[0]) - BGFX_CONFIG_MAX_VIEW_NAME_RESERVED
+				, _name
 				);
 		}
 
@@ -2085,6 +2125,8 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 		{
 			m_occlusionQuery.invalidate(_handle);
 		}
+
+		void submitBlit(BlitState& _bs, uint16_t _view);
 
 		void submit(Frame* _render, ClearQuad& _clearQuad, TextVideoMemBlitter& _textVideoMemBlitter) BX_OVERRIDE;
 
@@ -2263,9 +2305,15 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 			capturePostReset();
 		}
 
+		bool isDeviceRemoved() BX_OVERRIDE
+		{
+			return m_lost;
+		}
+
 		void flip(HMD& _hmd) BX_OVERRIDE
 		{
-			if (NULL != m_swapChain)
+			if (NULL != m_swapChain
+			&&  !m_lost)
 			{
 				HRESULT hr = S_OK;
 				uint32_t syncInterval = BX_ENABLED(!BX_PLATFORM_WINDOWS)
@@ -2298,15 +2346,14 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 					}
 				}
 
-				if (isLost(hr) )
-				{
-					++m_lost;
-					BGFX_FATAL(10 > m_lost, bgfx::Fatal::DeviceLost, "Device is lost. FAILED 0x%08x", hr);
-				}
-				else
-				{
-					m_lost = 0;
-				}
+				m_lost = isLost(hr);
+				BGFX_FATAL(!m_lost
+					, bgfx::Fatal::DeviceLost
+					, "Device is lost. FAILED 0x%08x %s (%s)"
+					, hr
+					, getLostReason(hr)
+					, DXGI_ERROR_DEVICE_REMOVED == hr ? getLostReason(m_device->GetDeviceRemovedReason() ) : "no info"
+					);
 			}
 		}
 
@@ -2695,7 +2742,7 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 					for (jj = 0; jj < num; ++jj)
 					{
 						curr = &vertexElements[jj];
-						if (0 == bx::strncmp(curr->SemanticName, "TEXCOORD")
+						if (0 == bx::strCmp(curr->SemanticName, "TEXCOORD")
 						&&  curr->SemanticIndex == index)
 						{
 							break;
@@ -3294,7 +3341,7 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 				D3D11_MAPPED_SUBRESOURCE mapped;
 				DX_CHECK(m_deviceCtx->Map(m_captureTexture, 0, D3D11_MAP_READ, 0, &mapped) );
 
-				imageSwizzleBgra8(
+				bimg::imageSwizzleBgra8(
 					  mapped.pData
 					, getBufferWidth()
 					, getBufferHeight()
@@ -3551,7 +3598,7 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 #endif // BX_PLATFORM_WINDOWS
 
 		bool m_needPresent;
-		uint16_t m_lost;
+		bool m_lost;
 		uint16_t m_numWindows;
 		FrameBufferHandle m_windows[BGFX_CONFIG_MAX_FRAME_BUFFERS];
 
@@ -4319,14 +4366,14 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 
 	void TextureD3D11::create(const Memory* _mem, uint32_t _flags, uint8_t _skip)
 	{
-		ImageContainer imageContainer;
+		bimg::ImageContainer imageContainer;
 
-		if (imageParse(imageContainer, _mem->data, _mem->size) )
+		if (bimg::imageParse(imageContainer, _mem->data, _mem->size) )
 		{
 			uint8_t numMips = imageContainer.m_numMips;
 			const uint8_t startLod = uint8_t(bx::uint32_min(_skip, numMips-1) );
 			numMips -= startLod;
-			const ImageBlockInfo& blockInfo = getBlockInfo(TextureFormat::Enum(imageContainer.m_format) );
+			const bimg::ImageBlockInfo& blockInfo = bimg::getBlockInfo(bimg::TextureFormat::Enum(imageContainer.m_format) );
 			const uint32_t textureWidth  = bx::uint32_max(blockInfo.blockWidth,  imageContainer.m_width >>startLod);
 			const uint32_t textureHeight = bx::uint32_max(blockInfo.blockHeight, imageContainer.m_height>>startLod);
 			const uint16_t numLayers     = imageContainer.m_numLayers;
@@ -4338,7 +4385,7 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 			m_requestedFormat  = uint8_t(imageContainer.m_format);
 			m_textureFormat    = uint8_t(getViableTextureFormat(imageContainer) );
 			const bool convert = m_textureFormat != m_requestedFormat;
-			const uint8_t bpp = getBitsPerPixel(TextureFormat::Enum(m_textureFormat) );
+			const uint8_t bpp = bimg::getBitsPerPixel(bimg::TextureFormat::Enum(m_textureFormat) );
 
 			if (imageContainer.m_cubeMap)
 			{
@@ -4361,7 +4408,7 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 
 			uint32_t kk = 0;
 
-			const bool compressed = isCompressed(TextureFormat::Enum(m_textureFormat) );
+			const bool compressed = bimg::isCompressed(bimg::TextureFormat::Enum(m_textureFormat) );
 			const bool swizzle    = TextureFormat::BGRA8 == m_textureFormat && 0 != (m_flags&BGFX_TEXTURE_COMPUTE_WRITE);
 
 			BX_TRACE("Texture %3d: %s (requested: %s), layers %d, %dx%d%s%s%s."
@@ -4388,8 +4435,8 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 					height = bx::uint32_max(1, height);
 					depth  = bx::uint32_max(1, depth);
 
-					ImageMip mip;
-					if (imageGetRawData(imageContainer, side, lod+startLod, _mem->data, _mem->size, mip) )
+					bimg::ImageMip mip;
+					if (bimg::imageGetRawData(imageContainer, side, lod+startLod, _mem->data, _mem->size, mip) )
 					{
 						srd[kk].pSysMem = mip.m_data;
 
@@ -4397,7 +4444,7 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 						{
 							uint32_t srcpitch = mip.m_width*bpp/8;
 							uint8_t* temp = (uint8_t*)BX_ALLOC(g_allocator, mip.m_width*mip.m_height*bpp/8);
-							imageDecodeToBgra8(temp, mip.m_data, mip.m_width, mip.m_height, srcpitch, mip.m_format);
+							bimg::imageDecodeToBgra8(temp, mip.m_data, mip.m_width, mip.m_height, srcpitch, mip.m_format);
 
 							srd[kk].pSysMem = temp;
 							srd[kk].SysMemPitch = srcpitch;
@@ -4486,7 +4533,7 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 					desc.CPUAccessFlags = 0;
 					desc.MiscFlags      = 0;
 
-					if (isDepth( (TextureFormat::Enum)m_textureFormat) )
+					if (bimg::isDepth(bimg::TextureFormat::Enum(m_textureFormat) ) )
 					{
 						desc.BindFlags |= D3D11_BIND_DEPTH_STENCIL;
 						desc.Usage = D3D11_USAGE_DEFAULT;
@@ -4582,10 +4629,26 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 					desc.CPUAccessFlags = 0;
 					desc.MiscFlags      = 0;
 
+					if (renderTarget)
+					{
+						desc.BindFlags |= D3D11_BIND_RENDER_TARGET;
+						desc.Usage = D3D11_USAGE_DEFAULT;
+						desc.MiscFlags |= 0
+							| (1 < numMips ? D3D11_RESOURCE_MISC_GENERATE_MIPS : 0)
+							;
+					}
+
 					if (computeWrite)
 					{
 						desc.BindFlags |= D3D11_BIND_UNORDERED_ACCESS;
 						desc.Usage = D3D11_USAGE_DEFAULT;
+					}
+
+					if (readBack)
+					{
+						desc.BindFlags = 0;
+						desc.Usage = D3D11_USAGE_STAGING;
+						desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
 					}
 
 					srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE3D;
@@ -4668,7 +4731,7 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 		}
 
 		const uint32_t subres = _mip + ( (layer + _side) * m_numMips);
-		const uint32_t bpp    = getBitsPerPixel(TextureFormat::Enum(m_textureFormat) );
+		const uint32_t bpp    = bimg::getBitsPerPixel(bimg::TextureFormat::Enum(m_textureFormat) );
 		const uint32_t rectpitch  = _rect.m_width*bpp/8;
 		const uint32_t srcpitch   = UINT16_MAX == _pitch ? rectpitch : _pitch;
 		const uint32_t slicepitch = rectpitch*_rect.m_height;
@@ -4681,7 +4744,7 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 		if (convert)
 		{
 			temp = (uint8_t*)BX_ALLOC(g_allocator, slicepitch);
-			imageDecodeToBgra8(temp, data, _rect.m_width, _rect.m_height, srcpitch, TextureFormat::Enum(m_requestedFormat) );
+			bimg::imageDecodeToBgra8(temp, data, _rect.m_width, _rect.m_height, srcpitch, bimg::TextureFormat::Enum(m_requestedFormat) );
 			data = temp;
 		}
 
@@ -4777,7 +4840,7 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 		DX_CHECK(device->CreateRenderTargetView(ptr, NULL, &m_rtv[0]) );
 		DX_RELEASE(ptr, 0);
 
-		DXGI_FORMAT fmtDsv = isDepth(_depthFormat)
+		DXGI_FORMAT fmtDsv = bimg::isDepth(bimg::TextureFormat::Enum(_depthFormat) )
 			? s_textureFormat[_depthFormat].m_fmtDsv
 			: DXGI_FORMAT_D24_UNORM_S8_UINT
 			;
@@ -4877,7 +4940,7 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 					const uint32_t msaaQuality = bx::uint32_satsub( (texture.m_flags&BGFX_TEXTURE_RT_MSAA_MASK)>>BGFX_TEXTURE_RT_MSAA_SHIFT, 1);
 					const DXGI_SAMPLE_DESC& msaa = s_msaa[msaaQuality];
 
-					if (isDepth( (TextureFormat::Enum)texture.m_textureFormat) )
+					if (bimg::isDepth(bimg::TextureFormat::Enum(texture.m_textureFormat) ) )
 					{
 						BX_CHECK(NULL == m_dsv, "Frame buffer already has depth-stencil attached.");
 
@@ -5255,9 +5318,89 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 		}
 	}
 
+	void RendererContextD3D11::submitBlit(BlitState& _bs, uint16_t _view)
+	{
+		ID3D11DeviceContext* deviceCtx = m_deviceCtx;
+		
+		while (_bs.hasItem(_view) )
+		{
+			const BlitItem& blit = _bs.advance();
+			
+			const TextureD3D11& src = m_textures[blit.m_src.idx];
+			const TextureD3D11& dst = m_textures[blit.m_dst.idx];
+
+			uint32_t srcWidth  = bx::uint32_min(src.m_width,  blit.m_srcX + blit.m_width)  - blit.m_srcX;
+			uint32_t srcHeight = bx::uint32_min(src.m_height, blit.m_srcY + blit.m_height) - blit.m_srcY;
+			uint32_t srcDepth  = bx::uint32_min(src.m_depth,  blit.m_srcZ + blit.m_depth)  - blit.m_srcZ;
+			uint32_t dstWidth  = bx::uint32_min(dst.m_width,  blit.m_dstX + blit.m_width)  - blit.m_dstX;
+			uint32_t dstHeight = bx::uint32_min(dst.m_height, blit.m_dstY + blit.m_height) - blit.m_dstY;
+			uint32_t dstDepth  = bx::uint32_min(dst.m_depth,  blit.m_dstZ + blit.m_depth)  - blit.m_dstZ;
+			uint32_t width     = bx::uint32_min(srcWidth,  dstWidth);
+			uint32_t height    = bx::uint32_min(srcHeight, dstHeight);
+			uint32_t depth     = bx::uint32_min(srcDepth,  dstDepth);
+
+			if (TextureD3D11::Texture3D == src.m_type)
+			{
+				D3D11_BOX box;
+				box.left   = blit.m_srcX;
+				box.top    = blit.m_srcY;
+				box.front  = blit.m_srcZ;
+				box.right  = blit.m_srcX + width;
+				box.bottom = blit.m_srcY + height;;
+				box.back   = blit.m_srcZ + bx::uint32_imax(1, depth);
+
+				deviceCtx->CopySubresourceRegion(dst.m_ptr
+					, blit.m_dstMip
+					, blit.m_dstX
+					, blit.m_dstY
+					, blit.m_dstZ
+					, src.m_ptr
+					, blit.m_srcMip
+					, &box
+					);
+			}
+			else
+			{
+				bool depthStencil = bimg::isDepth(bimg::TextureFormat::Enum(src.m_textureFormat) );
+				BX_CHECK(!depthStencil
+					||  (width == src.m_width && height == src.m_height)
+					, "When blitting depthstencil surface, source resolution must match destination."
+					);
+
+				D3D11_BOX box;
+				box.left   = blit.m_srcX;
+				box.top    = blit.m_srcY;
+				box.front  = 0;
+				box.right  = blit.m_srcX + width;
+				box.bottom = blit.m_srcY + height;
+				box.back   = 1;
+
+				const uint32_t srcZ = TextureD3D11::TextureCube == src.m_type
+					? blit.m_srcZ
+					: 0
+					;
+				const uint32_t dstZ = TextureD3D11::TextureCube == dst.m_type
+					? blit.m_dstZ
+					: 0
+					;
+
+				deviceCtx->CopySubresourceRegion(dst.m_ptr
+					, dstZ*dst.m_numMips+blit.m_dstMip
+					, blit.m_dstX
+					, blit.m_dstY
+					, 0
+					, src.m_ptr
+					, srcZ*src.m_numMips+blit.m_srcMip
+					, depthStencil ? NULL : &box
+					);
+			}
+		}
+	}
+
 	void RendererContextD3D11::submit(Frame* _render, ClearQuad& _clearQuad, TextVideoMemBlitter& _textVideoMemBlitter)
 	{
-		if (updateResolution(_render->m_resolution) )
+		if (m_lost
+		||  updateResolution(_render->m_resolution) )
 		{
 			return;
 		}
@@ -5299,6 +5442,9 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 		currentState.m_stateFlags = BGFX_STATE_NONE;
 		currentState.m_stencil = packStencil(BGFX_STENCIL_NONE, BGFX_STENCIL_NONE);
 
+		RenderBind currentBind;
+		currentBind.clear();
+
 		_render->m_hmdInitialized = m_ovr.isInitialized();
 
 		const bool hmdEnabled = m_ovr.isEnabled();
@@ -5314,10 +5460,7 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 		uint16_t view = UINT16_MAX;
 		FrameBufferHandle fbh = { BGFX_CONFIG_MAX_FRAME_BUFFERS };
 
-		BlitKey blitKey;
-		blitKey.decode(_render->m_blitKeys[0]);
-		uint16_t numBlitItems = _render->m_numBlitItems;
-		uint16_t blitItem = 0;
+		BlitState bs(_render);
 
 		const uint64_t primType = _render->m_debug&BGFX_DEBUG_WIREFRAME ? BGFX_STATE_PT_LINES : 0;
 		uint8_t primIndex = uint8_t(primType >> BGFX_STATE_PT_SHIFT);
@@ -5362,7 +5505,9 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 					|| item == numItems
 					;
 
-				const RenderItem& renderItem = _render->m_renderItem[_render->m_sortValues[item] ];
+				const uint32_t itemIdx       = _render->m_sortValues[item];
+				const RenderItem& renderItem = _render->m_renderItem[itemIdx];
+				const RenderBind& renderBind = _render->m_renderItemBind[itemIdx];
 				++item;
 
 				if (viewChanged)
@@ -5468,81 +5613,7 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 						prim = s_primInfo[BX_COUNTOF(s_primName)]; // Force primitive type update after clear quad.
 					}
 
-					const uint8_t blitView = SortKey::decodeView(encodedKey);
-					for (; blitItem < numBlitItems && blitKey.m_view <= blitView; blitItem++)
-					{
-						const BlitItem& blit = _render->m_blitItem[blitItem];
-						blitKey.decode(_render->m_blitKeys[blitItem+1]);
-
-						const TextureD3D11& src = m_textures[blit.m_src.idx];
-						const TextureD3D11& dst = m_textures[blit.m_dst.idx];
-
-						uint32_t srcWidth  = bx::uint32_min(src.m_width,  blit.m_srcX + blit.m_width)  - blit.m_srcX;
-						uint32_t srcHeight = bx::uint32_min(src.m_height, blit.m_srcY + blit.m_height) - blit.m_srcY;
-						uint32_t srcDepth  = bx::uint32_min(src.m_depth,  blit.m_srcZ + blit.m_depth)  - blit.m_srcZ;
-						uint32_t dstWidth  = bx::uint32_min(dst.m_width,  blit.m_dstX + blit.m_width)  - blit.m_dstX;
-						uint32_t dstHeight = bx::uint32_min(dst.m_height, blit.m_dstY + blit.m_height) - blit.m_dstY;
-						uint32_t dstDepth  = bx::uint32_min(dst.m_depth,  blit.m_dstZ + blit.m_depth)  - blit.m_dstZ;
-						uint32_t width     = bx::uint32_min(srcWidth,  dstWidth);
-						uint32_t height    = bx::uint32_min(srcHeight, dstHeight);
-						uint32_t depth     = bx::uint32_min(srcDepth,  dstDepth);
-
-						if (TextureD3D11::Texture3D == src.m_type)
-						{
-							D3D11_BOX box;
-							box.left   = blit.m_srcX;
-							box.top    = blit.m_srcY;
-							box.front  = blit.m_srcZ;
-							box.right  = blit.m_srcX + width;
-							box.bottom = blit.m_srcY + height;;
-							box.back   = blit.m_srcZ + bx::uint32_imax(1, depth);
-
-							deviceCtx->CopySubresourceRegion(dst.m_ptr
-								, blit.m_dstMip
-								, blit.m_dstX
-								, blit.m_dstY
-								, blit.m_dstZ
-								, src.m_ptr
-								, blit.m_srcMip
-								, &box
-								);
-						}
-						else
-						{
-							bool depthStencil = isDepth(TextureFormat::Enum(src.m_textureFormat) );
-							BX_CHECK(!depthStencil
-								||  (width == src.m_width && height == src.m_height)
-								, "When blitting depthstencil surface, source resolution must match destination."
-								);
-
-							D3D11_BOX box;
-							box.left   = blit.m_srcX;
-							box.top    = blit.m_srcY;
-							box.front  = 0;
-							box.right  = blit.m_srcX + width;
-							box.bottom = blit.m_srcY + height;
-							box.back   = 1;
-
-							const uint32_t srcZ = TextureD3D11::TextureCube == src.m_type
-								? blit.m_srcZ
-								: 0
-								;
-							const uint32_t dstZ = TextureD3D11::TextureCube == dst.m_type
-								? blit.m_dstZ
-								: 0
-								;
-
-							deviceCtx->CopySubresourceRegion(dst.m_ptr
-								, dstZ*dst.m_numMips+blit.m_dstMip
-								, blit.m_dstX
-								, blit.m_dstY
-								, 0
-								, src.m_ptr
-								, srcZ*src.m_numMips+blit.m_srcMip
-								, depthStencil ? NULL : &box
-								);
-						}
-					}
+					submitBlit(bs, view);
 				}
 
 				if (isCompute)
@@ -5623,7 +5694,7 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 
 					for (uint32_t ii = 0; ii < BGFX_MAX_COMPUTE_BINDINGS; ++ii)
 					{
-						const Binding& bind = compute.m_bind[ii];
+						const Binding& bind = renderBind.m_bind[ii];
 						if (invalidHandle != bind.m_idx)
 						{
 							switch (bind.m_type)
@@ -5747,6 +5818,8 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 					changedStencil = packStencil(BGFX_STENCIL_MASK, BGFX_STENCIL_MASK);
 					currentState.m_stateFlags = newFlags;
 					currentState.m_stencil    = newStencil;
+
+					currentBind.clear();
 
 					setBlendState(newFlags);
 					setDepthStencilState(newFlags, packStencil(BGFX_STENCIL_DEFAULT, BGFX_STENCIL_DEFAULT) );
@@ -5919,16 +5992,36 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 					uint32_t changes = 0;
 					for (uint8_t stage = 0; stage < BGFX_CONFIG_MAX_TEXTURE_SAMPLERS; ++stage)
 					{
-						const Binding& bind = draw.m_bind[stage];
-						Binding& current = currentState.m_bind[stage];
+						const Binding& bind = renderBind.m_bind[stage];
+						Binding& current = currentBind.m_bind[stage];
 						if (current.m_idx != bind.m_idx
+						||  current.m_type != bind.m_type
 						||  current.m_un.m_draw.m_textureFlags != bind.m_un.m_draw.m_textureFlags
 						||  programChanged)
 						{
 							if (invalidHandle != bind.m_idx)
 							{
-								TextureD3D11& texture = m_textures[bind.m_idx];
-								texture.commit(stage, bind.m_un.m_draw.m_textureFlags, _render->m_colorPalette);
+								switch (bind.m_type)
+								{
+								case Binding::Texture:
+									{
+										TextureD3D11& texture = m_textures[bind.m_idx];
+										texture.commit(stage, bind.m_un.m_draw.m_textureFlags, _render->m_colorPalette);
+									}
+									break;
+
+								case Binding::IndexBuffer:
+								case Binding::VertexBuffer:
+									{
+										const BufferD3D11& buffer = Binding::IndexBuffer == bind.m_type
+											? m_indexBuffers[bind.m_idx]
+											: m_vertexBuffers[bind.m_idx]
+											;
+										m_textureStage.m_srv[stage] = buffer.m_srv;
+										m_textureStage.m_sampler[stage] = NULL;
+									}
+									break;
+								}
 							}
 							else
 							{
@@ -6169,6 +6262,8 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 
 				invalidateCompute();
 			}
+
+			submitBlit(bs, BGFX_CONFIG_MAX_VIEWS);
 
 			if (0 < _render->m_num)
 			{
