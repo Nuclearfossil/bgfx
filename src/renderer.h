@@ -28,7 +28,7 @@ namespace bgfx
 
 		const BlitItem& advance()
 		{
-			const BlitItem& bi = m_frame->m_blitItem[m_item];
+			const BlitItem& bi = m_frame->m_blitItem[m_key.m_item];
 
 			++m_item;
 			m_key.decode(m_frame->m_blitKeys[m_item]);
@@ -107,11 +107,11 @@ namespace bgfx
 		}
 
 		template<uint16_t mtxRegs, typename RendererContext, typename Program, typename Draw>
-		void setPredefined(RendererContext* _renderer, uint16_t _view, uint8_t _eye, Program& _program, const Frame* _frame, const Draw& _draw)
+		void setPredefined(RendererContext* _renderer, uint16_t _view, uint8_t _eye, const Program& _program, const Frame* _frame, const Draw& _draw)
 		{
 			for (uint32_t ii = 0, num = _program.m_numPredefined; ii < num; ++ii)
 			{
-				PredefinedUniform& predefined = _program.m_predefined[ii];
+				const PredefinedUniform& predefined = _program.m_predefined[ii];
 				uint8_t flags = predefined.m_type&BGFX_UNIFORM_FRAGMENTBIT;
 				switch (predefined.m_type&(~BGFX_UNIFORM_FRAGMENTBIT) )
 				{
@@ -465,6 +465,95 @@ namespace bgfx
 	private:
 		typedef stl::unordered_map<uint64_t, uint16_t> HashMap;
 		HashMap m_hashMap;
+	};
+
+	inline bool hasVertexStreamChanged(const RenderDraw& _current, const RenderDraw& _new)
+	{
+		if (_current.m_streamMask             != _new.m_streamMask
+		||  _current.m_instanceDataBuffer.idx != _new.m_instanceDataBuffer.idx
+		||  _current.m_instanceDataOffset     != _new.m_instanceDataOffset
+		||  _current.m_instanceDataStride     != _new.m_instanceDataStride)
+		{
+			return true;
+		}
+
+		for (uint32_t idx = 0, streamMask = _new.m_streamMask, ntz = bx::uint32_cnttz(streamMask)
+			; 0 != streamMask
+			; streamMask >>= 1, idx += 1, ntz = bx::uint32_cnttz(streamMask)
+			)
+		{
+			streamMask >>= ntz;
+			idx         += ntz;
+
+			if (_current.m_stream[idx].m_handle.idx  != _new.m_stream[idx].m_handle.idx
+			||  _current.m_stream[idx].m_startVertex != _new.m_stream[idx].m_startVertex)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	template<typename Ty>
+	struct Profiler
+	{
+		Profiler(Frame* _frame, Ty& _gpuTimer, const char (*_viewName)[BGFX_CONFIG_MAX_VIEW_NAME], bool _enabled = true)
+			: m_viewName(_viewName)
+			, m_frame(_frame)
+			, m_gpuTimer(_gpuTimer)
+			, m_queryIdx(UINT32_MAX)
+			, m_numViews(0)
+			, m_enabled(_enabled && 0 != (_frame->m_debug & BGFX_DEBUG_PROFILER) )
+		{
+		}
+
+		~Profiler()
+		{
+			m_frame->m_perfStats.numViews = m_numViews;
+		}
+
+		void begin(uint16_t _view)
+		{
+			if (m_enabled)
+			{
+				ViewStats& viewStats = m_frame->m_perfStats.viewStats[m_numViews];
+				viewStats.cpuTimeElapsed = -bx::getHPCounter();
+
+				m_queryIdx = m_gpuTimer.begin(_view);
+
+				viewStats.view = uint8_t(_view);
+				bx::strCopy(viewStats.name
+					, BGFX_CONFIG_MAX_VIEW_NAME
+					, &m_viewName[_view][BGFX_CONFIG_MAX_VIEW_NAME_RESERVED]
+					);
+			}
+		}
+
+		void end()
+		{
+			if (m_enabled
+			&&  UINT32_MAX != m_queryIdx)
+			{
+				m_gpuTimer.end(m_queryIdx);
+
+				ViewStats& viewStats = m_frame->m_perfStats.viewStats[m_numViews];
+				const typename Ty::Result& result = m_gpuTimer.m_result[viewStats.view];
+
+				viewStats.cpuTimeElapsed += bx::getHPCounter();
+				viewStats.gpuTimeElapsed = result.m_end - result.m_begin;
+
+				++m_numViews;
+				m_queryIdx = UINT32_MAX;
+			}
+		}
+
+		const char (*m_viewName)[BGFX_CONFIG_MAX_VIEW_NAME];
+		Frame*   m_frame;
+		Ty&      m_gpuTimer;
+		uint32_t m_queryIdx;
+		uint16_t m_numViews;
+		bool     m_enabled;
 	};
 
 } // namespace bgfx

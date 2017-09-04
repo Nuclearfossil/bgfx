@@ -4,7 +4,7 @@
  */
 
 #include <bx/rng.h>
-#include <bx/fpumath.h>
+#include <bx/math.h>
 #include "bounds.h"
 
 void aabbToObb(Obb& _obb, const Aabb& _aabb)
@@ -216,7 +216,7 @@ void calcObb(Obb& _obb, const void* _vertices, uint32_t _numVertices, uint32_t _
 	Obb best;
 	aabbToObb(best, aabb);
 
-	float angleStep = float(bx::piHalf/_steps);
+	float angleStep = float(bx::kPiHalf/_steps);
 	float ax = 0.0f;
 	float mtx[16];
 
@@ -543,7 +543,7 @@ bool intersect(const Ray& _ray, const Cylinder& _cylinder, bool _capsule, Inters
 	bx::vec3Cross(normal, _ray.m_dir, axis);
 
 	const float len  = bx::vec3Norm(normal, normal);
-	const float dist = bx::fabsolute(bx::vec3Dot(rc, normal) );
+	const float dist = bx::fabs(bx::vec3Dot(rc, normal) );
 
 	if (dist > _cylinder.m_radius)
 	{
@@ -559,7 +559,7 @@ bool intersect(const Ray& _ray, const Cylinder& _cylinder, bool _capsule, Inters
 
 	const float rsq   = bx::fsq(_cylinder.m_radius);
 	const float ddoto = bx::vec3Dot(_ray.m_dir, vo);
-	const float ss    = t0 - bx::fabsolute(bx::fsqrt(rsq - bx::fsq(dist) ) / ddoto);
+	const float ss    = t0 - bx::fabs(bx::fsqrt(rsq - bx::fsq(dist) ) / ddoto);
 
 	float point[3];
 	getPointAt(point, _ray, ss);
