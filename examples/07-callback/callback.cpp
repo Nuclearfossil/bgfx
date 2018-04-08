@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2017 Branimir Karadzic. All rights reserved.
+ * Copyright 2011-2018 Branimir Karadzic. All rights reserved.
  * License: https://github.com/bkaradzic/bgfx#license-bsd-2-clause
  */
 
@@ -14,6 +14,8 @@
 #include "aviwriter.h"
 
 #include <inttypes.h>
+
+#include <bimg/bimg.h>
 
 namespace
 {
@@ -67,46 +69,14 @@ static const uint16_t s_cubeIndices[36] =
 	6, 3, 7,
 };
 
-void imageWriteTga(bx::WriterI* _writer, uint32_t _width, uint32_t _height, uint32_t _pitch, const void* _src, bool _grayscale, bool _yflip, bx::Error* _err)
+void savePng(const char* _filePath, uint32_t _width, uint32_t _height, uint32_t _srcPitch, const void* _src, bimg::TextureFormat::Enum _format, bool _yflip)
 {
-	BX_ERROR_SCOPE(_err);
-
-	uint8_t type = _grayscale ? 3 :  2;
-	uint8_t bpp  = _grayscale ? 8 : 32;
-
-	uint8_t header[18] = {};
-	header[ 2] = type;
-	header[12] =  _width     &0xff;
-	header[13] = (_width >>8)&0xff;
-	header[14] =  _height    &0xff;
-	header[15] = (_height>>8)&0xff;
-	header[16] = bpp;
-	header[17] = 32;
-
-	bx::write(_writer, header, sizeof(header), _err);
-
-	uint32_t dstPitch = _width*bpp/8;
-	if (_yflip)
+	bx::FileWriter writer;
+	bx::Error err;
+	if (bx::open(&writer, _filePath, false, &err) )
 	{
-		uint8_t* data = (uint8_t*)_src + _pitch*_height - _pitch;
-		for (uint32_t yy = 0; yy < _height; ++yy)
-		{
-			bx::write(_writer, data, dstPitch, _err);
-			data -= _pitch;
-		}
-	}
-	else if (_pitch == dstPitch)
-	{
-		bx::write(_writer, _src, _height*_pitch, _err);
-	}
-	else
-	{
-		uint8_t* data = (uint8_t*)_src;
-		for (uint32_t yy = 0; yy < _height; ++yy)
-		{
-			bx::write(_writer, data, dstPitch, _err);
-			data += _pitch;
-		}
+		bimg::imageWritePng(&writer, _width, _height, _srcPitch, _src, _format, _yflip, &err);
+		bx::close(&writer);
 	}
 }
 
@@ -116,7 +86,7 @@ void saveTga(const char* _filePath, uint32_t _width, uint32_t _height, uint32_t 
 	bx::Error err;
 	if (bx::open(&writer, _filePath, false, &err) )
 	{
-		imageWriteTga(&writer, _width, _height, _srcPitch, _src, _grayscale, _yflip, &err);
+		bimg::imageWriteTga(&writer, _width, _height, _srcPitch, _src, _grayscale, _yflip, &err);
 		bx::close(&writer);
 	}
 }
@@ -140,6 +110,18 @@ struct BgfxCallback : public bgfx::CallbackI
 	{
 		bx::debugPrintf("%s (%d): ", _filePath, _line);
 		bx::debugPrintfVargs(_format, _argList);
+	}
+
+	virtual void profilerBegin(const char* /*_name*/, uint32_t /*_abgr*/, const char* /*_filePath*/, uint16_t /*_line*/) override
+	{
+	}
+
+	virtual void profilerBeginLiteral(const char* /*_name*/, uint32_t /*_abgr*/, const char* /*_filePath*/, uint16_t /*_line*/) override
+	{
+	}
+
+	virtual void profilerEnd() override
+	{
 	}
 
 	virtual uint32_t cacheReadSize(uint64_t _id) override
@@ -203,6 +185,10 @@ struct BgfxCallback : public bgfx::CallbackI
 	virtual void screenShot(const char* _filePath, uint32_t _width, uint32_t _height, uint32_t _pitch, const void* _data, uint32_t /*_size*/, bool _yflip) override
 	{
 		char temp[1024];
+
+		// Save screen shot as PNG.
+		bx::snprintf(temp, BX_COUNTOF(temp), "%s.png", _filePath);
+		savePng(temp, _width, _height, _pitch, _data, bimg::TextureFormat::BGRA8, _yflip);
 
 		// Save screen shot as TGA.
 		bx::snprintf(temp, BX_COUNTOF(temp), "%s.tga", _filePath);

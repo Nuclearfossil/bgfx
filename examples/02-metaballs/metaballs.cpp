@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2017 Branimir Karadzic. All rights reserved.
+ * Copyright 2011-2018 Branimir Karadzic. All rights reserved.
  * License: https://github.com/bkaradzic/bgfx#license-bsd-2-clause
  */
 
@@ -375,7 +375,7 @@ float vertLerp(float* __restrict _result, float _iso, uint32_t _idx0, float _v0,
 	const float* __restrict edge0 = s_cube[_idx0];
 	const float* __restrict edge1 = s_cube[_idx1];
 
-	if (bx::fabs(_iso-_v1) < 0.00001f)
+	if (bx::abs(_iso-_v1) < 0.00001f)
 	{
 		_result[0] = edge1[0];
 		_result[1] = edge1[1];
@@ -383,8 +383,8 @@ float vertLerp(float* __restrict _result, float _iso, uint32_t _idx0, float _v0,
 		return 1.0f;
 	}
 
-	if (bx::fabs(_iso-_v0) < 0.00001f
-	||  bx::fabs(_v0-_v1) < 0.00001f)
+	if (bx::abs(_iso-_v0) < 0.00001f
+	||  bx::abs(_v0-_v1) < 0.00001f)
 	{
 		_result[0] = edge0[0];
 		_result[1] = edge0[1];
@@ -559,8 +559,6 @@ public:
 
 			showExampleDialog(this);
 
-			imguiEndFrame();
-
 			// Set view 0 default viewport.
 			bgfx::setViewRect(0, 0, 0, uint16_t(m_width), uint16_t(m_height) );
 
@@ -621,10 +619,10 @@ public:
 			float sphere[numSpheres][4];
 			for (uint32_t ii = 0; ii < numSpheres; ++ii)
 			{
-				sphere[ii][0] = bx::fsin(time*(ii*0.21f)+ii*0.37f) * (DIMS * 0.5f - 8.0f);
-				sphere[ii][1] = bx::fsin(time*(ii*0.37f)+ii*0.67f) * (DIMS * 0.5f - 8.0f);
-				sphere[ii][2] = bx::fcos(time*(ii*0.11f)+ii*0.13f) * (DIMS * 0.5f - 8.0f);
-				sphere[ii][3] = 1.0f/(2.0f + (bx::fsin(time*(ii*0.13f) )*0.5f+0.5f)*2.0f);
+				sphere[ii][0] = bx::sin(time*(ii*0.21f)+ii*0.37f) * (DIMS * 0.5f - 8.0f);
+				sphere[ii][1] = bx::sin(time*(ii*0.37f)+ii*0.67f) * (DIMS * 0.5f - 8.0f);
+				sphere[ii][2] = bx::cos(time*(ii*0.11f)+ii*0.13f) * (DIMS * 0.5f - 8.0f);
+				sphere[ii][3] = 1.0f/(2.0f + (bx::sin(time*(ii*0.13f) )*0.5f+0.5f)*2.0f);
 			}
 
 			profUpdate = bx::getHPCounter();
@@ -758,11 +756,28 @@ public:
 			bgfx::submit(0, m_program);
 
 			// Display stats.
-			bgfx::dbgTextPrintf(1, 4, 0x0f, "Num vertices: %5d (%6.4f%%)", numVertices, float(numVertices)/maxVertices * 100);
-			bgfx::dbgTextPrintf(1, 5, 0x0f, "      Update: % 7.3f[ms]", double(profUpdate)*toMs);
-			bgfx::dbgTextPrintf(1, 6, 0x0f, "Calc normals: % 7.3f[ms]", double(profNormal)*toMs);
-			bgfx::dbgTextPrintf(1, 7, 0x0f, " Triangulate: % 7.3f[ms]", double(profTriangulate)*toMs);
-			bgfx::dbgTextPrintf(1, 8, 0x0f, "       Frame: % 7.3f[ms]", double(frameTime)*toMs);
+			ImGui::SetNextWindowPos(
+				  ImVec2(m_width - m_width / 5.0f - 10.0f, 10.0f)
+				, ImGuiCond_FirstUseEver
+				);
+			ImGui::SetNextWindowSize(
+				  ImVec2(m_width / 5.0f, m_height / 4.0f)
+				, ImGuiCond_FirstUseEver
+				);
+			ImGui::Begin("Stats"
+				, NULL
+				, 0
+				);
+
+			ImGui::Text("Num vertices:"); ImGui::SameLine(100); ImGui::Text("%5d (%6.4f%%)", numVertices, float(numVertices)/maxVertices * 100);
+			ImGui::Text("Update:");       ImGui::SameLine(100); ImGui::Text("% 7.3f[ms]", double(profUpdate)*toMs);
+			ImGui::Text("Calc normals:"); ImGui::SameLine(100); ImGui::Text("% 7.3f[ms]", double(profNormal)*toMs);
+			ImGui::Text("Triangulate:");  ImGui::SameLine(100); ImGui::Text("% 7.3f[ms]", double(profTriangulate)*toMs);
+			ImGui::Text("Frame:");        ImGui::SameLine(100); ImGui::Text("% 7.3f[ms]", double(frameTime)*toMs);
+
+			ImGui::End();
+
+			imguiEndFrame();
 
 			// Advance to next frame. Rendering thread will be kicked to
 			// process submitted rendering primitives.
