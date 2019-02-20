@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2018 Branimir Karadzic. All rights reserved.
+ * Copyright 2011-2019 Branimir Karadzic. All rights reserved.
  * License: https://github.com/bkaradzic/bgfx#license-bsd-2-clause
  */
 
@@ -147,7 +147,7 @@ namespace bgfx
 		{ 5, 0 }, // GATHER4_C
 		{ 5, 0 }, // GATHER4_PO
 		{ 0, 0 }, // GATHER4_PO_C
-		{ 0, 0 }, // RCP
+		{ 2, 0 }, // RCP
 		{ 0, 0 }, // F32TOF16
 		{ 0, 0 }, // F16TOF32
 		{ 0, 0 }, // UADDC
@@ -156,8 +156,8 @@ namespace bgfx
 		{ 0, 0 }, // FIRSTBIT_HI
 		{ 0, 0 }, // FIRSTBIT_LO
 		{ 0, 0 }, // FIRSTBIT_SHI
-		{ 0, 0 }, // UBFE
-		{ 0, 0 }, // IBFE
+		{ 4, 0 }, // UBFE
+		{ 4, 0 }, // IBFE
 		{ 5, 0 }, // BFI
 		{ 0, 0 }, // BFREV
 		{ 5, 0 }, // SWAPC
@@ -717,8 +717,8 @@ namespace bgfx
 	}
 
 	// dxbc hash function is slightly modified version of MD5 hash.
-	// https://tools.ietf.org/html/rfc1321
-	// http://www.efgh.com/software/md5.txt
+	// https://web.archive.org/web/20190207230524/https://tools.ietf.org/html/rfc1321
+	// https://web.archive.org/web/20190207230538/http://www.efgh.com/software/md5.txt
 	//
 	// Assumption is that data pointer, size are both 4-byte aligned,
 	// and little endian.

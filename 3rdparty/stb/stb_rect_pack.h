@@ -1,23 +1,10 @@
-#if defined(__GNUC__) || defined(__clang__)
-#	if defined(__has_warning)
-#		define STB_HAS_WARNING __has_warning
-# 	else
-#		define STB_HAS_WARNING(w)	1
-#	endif
-#	if defined(__clang__)
-#		pragma clang diagnostic ignored "-Wunknown-pragmas"
-#	endif // defined(__clang__)
-#	pragma GCC diagnostic ignored "-Wtype-limits"
-#	pragma GCC diagnostic ignored "-Wunused-function"
-#	pragma GCC diagnostic ignored "-Wunused-parameter"
-#	if STB_HAS_WARNING("-Wunused-but-set-variable")
-#		pragma GCC diagnostic ignored "-Wunused-but-set-variable"
-#	endif
-#else
-#	pragma warning(disable:4100) // C4100: 'c': unreferenced formal parameter
-#endif
+// [DEAR IMGUI] 
+// This is a slightly modified version of stb_rect_pack.h 0.99. 
+// Those changes would need to be pushed into nothings/stb:
+// - Added STBRP__CDECL
+// Grep for [DEAR IMGUI] to find the changes.
 
-// stb_rect_pack.h - v0.11 - public domain - rectangle packing
+// stb_rect_pack.h - v0.99 - public domain - rectangle packing
 // Sean Barrett 2014
 //
 // Useful for e.g. packing rectangular textures into an atlas.
@@ -53,6 +40,7 @@
 //
 // Version history:
 //
+//     0.99  (2019-02-07)  warning fixes
 //     0.11  (2017-03-03)  return packing success/fail result
 //     0.10  (2016-10-25)  remove cast-away-const to avoid warnings
 //     0.09  (2016-08-27)  fix compiler warnings
@@ -223,6 +211,7 @@ struct stbrp_context
 #define STBRP_ASSERT assert
 #endif
 
+// [DEAR IMGUI] Added STBRP__CDECL
 #ifdef _MSC_VER
 #define STBRP__NOTUSED(v)  (void)(v)
 #define STBRP__CDECL __cdecl
@@ -531,6 +520,7 @@ static stbrp__findresult stbrp__skyline_pack_rectangle(stbrp_context *context, i
    return res;
 }
 
+// [DEAR IMGUI] Added STBRP__CDECL
 static int STBRP__CDECL rect_height_compare(const void *a, const void *b)
 {
    const stbrp_rect *p = (const stbrp_rect *) a;
@@ -542,6 +532,7 @@ static int STBRP__CDECL rect_height_compare(const void *a, const void *b)
    return (p->w > q->w) ? -1 : (p->w < q->w);
 }
 
+// [DEAR IMGUI] Added STBRP__CDECL
 static int STBRP__CDECL rect_original_order(const void *a, const void *b)
 {
    const stbrp_rect *p = (const stbrp_rect *) a;
@@ -562,9 +553,6 @@ STBRP_DEF int stbrp_pack_rects(stbrp_context *context, stbrp_rect *rects, int nu
    // we use the 'was_packed' field internally to allow sorting/unsorting
    for (i=0; i < num_rects; ++i) {
       rects[i].was_packed = i;
-      #ifndef STBRP_LARGE_RECTS
-      STBRP_ASSERT(rects[i].w <= 0xffff && rects[i].h <= 0xffff);
-      #endif
    }
 
    // sort according to heuristic

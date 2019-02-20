@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2018 Branimir Karadzic. All rights reserved.
+ * Copyright 2011-2019 Branimir Karadzic. All rights reserved.
  * License: https://github.com/bkaradzic/bgfx#license-bsd-2-clause
  */
 
@@ -52,7 +52,7 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 #include "nvapi.h"
 #include "dxgi.h"
 
-#if BGFX_CONFIG_DEBUG_PIX
+#if BGFX_CONFIG_DEBUG_ANNOTATION
 #	if BX_PLATFORM_WINDOWS || BX_PLATFORM_WINRT
 typedef struct PIXEventsThreadInfo* (WINAPI* PFN_PIX_GET_THREAD_INFO)();
 typedef uint64_t                    (WINAPI* PFN_PIX_EVENTS_REPLACE_BLOCK)(bool _getEarliestTime);
@@ -80,7 +80,25 @@ extern "C" uint64_t                    WINAPI bgfx_PIXEventsReplaceBlock(bool _g
 #	define PIX3_BEGINEVENT(_commandList, _color, _name) BX_UNUSED(_commandList, _color, _name)
 #	define PIX3_SETMARKER(_commandList, _color, _name)  BX_UNUSED(_commandList, _color, _name)
 #	define PIX3_ENDEVENT(_commandList)                  BX_UNUSED(_commandList)
-#endif // BGFX_CONFIG_DEBUG_PIX
+#endif // BGFX_CONFIG_DEBUG_ANNOTATION
+
+#define BGFX_D3D12_PROFILER_BEGIN(_view, _abgr)                   \
+	BX_MACRO_BLOCK_BEGIN                                          \
+		PIX3_BEGINEVENT(m_commandList, _abgr, s_viewName[_view]); \
+		BGFX_PROFILER_BEGIN(s_viewName[view], _abgr);             \
+	BX_MACRO_BLOCK_END
+
+#define BGFX_D3D12_PROFILER_BEGIN_LITERAL(_name, _abgr)           \
+	BX_MACRO_BLOCK_BEGIN                                          \
+		PIX3_BEGINEVENT(m_commandList, _abgr, "" # _name);        \
+		BGFX_PROFILER_BEGIN_LITERAL("" # _name, _abgr);           \
+	BX_MACRO_BLOCK_END
+
+#define BGFX_D3D12_PROFILER_END()     \
+	BX_MACRO_BLOCK_BEGIN              \
+		BGFX_PROFILER_END();          \
+		PIX3_ENDEVENT(m_commandList); \
+	BX_MACRO_BLOCK_END
 
 namespace bgfx { namespace d3d12
 {
@@ -311,10 +329,10 @@ namespace bgfx { namespace d3d12
 			bx::memSet(&m_uavd, 0, sizeof(m_uavd) );
 		}
 
-		void* create(const Memory* _mem, uint32_t _flags, uint8_t _skip);
+		void* create(const Memory* _mem, uint64_t _flags, uint8_t _skip);
 		void destroy();
 		void update(ID3D12GraphicsCommandList* _commandList, uint8_t _side, uint8_t _mip, const Rect& _rect, uint16_t _z, uint16_t _depth, uint16_t _pitch, const Memory* _mem);
-		void resolve();
+		void resolve(uint8_t _resolve) const;
 		D3D12_RESOURCE_STATES setState(ID3D12GraphicsCommandList* _commandList, D3D12_RESOURCE_STATES _state);
 
 		D3D12_SHADER_RESOURCE_VIEW_DESC  m_srvd;
@@ -322,10 +340,11 @@ namespace bgfx { namespace d3d12
 		ID3D12Resource* m_ptr;
 		void* m_directAccessPtr;
 		D3D12_RESOURCE_STATES m_state;
-		uint32_t m_flags;
+		uint64_t m_flags;
 		uint32_t m_width;
 		uint32_t m_height;
 		uint32_t m_depth;
+		uint32_t m_numLayers;
 		uint16_t m_samplerIdx;
 		uint8_t m_type;
 		uint8_t m_requestedFormat;
@@ -337,6 +356,7 @@ namespace bgfx { namespace d3d12
 	{
 		FrameBufferD3D12()
 			: m_swapChain(NULL)
+			, m_nwh(NULL)
 			, m_width(0)
 			, m_height(0)
 			, m_denseIdx(UINT16_MAX)
@@ -349,7 +369,7 @@ namespace bgfx { namespace d3d12
 		}
 
 		void create(uint8_t _num, const Attachment* _attachment);
-		void create(uint16_t _denseIdx, void* _nwh, uint32_t _width, uint32_t _height, TextureFormat::Enum _depthFormat);
+		void create(uint16_t _denseIdx, void* _nwh, uint32_t _width, uint32_t _height, TextureFormat::Enum _format, TextureFormat::Enum _depthFormat);
 		uint16_t destroy();
 		HRESULT present(uint32_t _syncInterval, uint32_t _flags);
 		void preReset();
@@ -361,6 +381,7 @@ namespace bgfx { namespace d3d12
 		TextureHandle m_texture[BGFX_CONFIG_MAX_FRAME_BUFFER_ATTACHMENTS];
 		TextureHandle m_depth;
 		Dxgi::SwapChainI* m_swapChain;
+		void* m_nwh;
 		uint32_t m_width;
 		uint32_t m_height;
 		uint16_t m_denseIdx;

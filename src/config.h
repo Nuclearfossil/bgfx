@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2018 Branimir Karadzic. All rights reserved.
+ * Copyright 2011-2019 Branimir Karadzic. All rights reserved.
  * License: https://github.com/bkaradzic/bgfx#license-bsd-2-clause
  */
 
@@ -143,30 +143,20 @@
 #	define BGFX_CONFIG_USE_TINYSTL 1
 #endif // BGFX_CONFIG_USE_TINYSTL
 
-/// Enable OculusVR integration.
-#ifndef BGFX_CONFIG_USE_OVR
-#	define BGFX_CONFIG_USE_OVR 0
-#endif // BGFX_CONFIG_USE_OVR
-
 /// Enable nVidia PerfHUD integration.
 #ifndef BGFX_CONFIG_DEBUG_PERFHUD
 #	define BGFX_CONFIG_DEBUG_PERFHUD 0
 #endif // BGFX_CONFIG_DEBUG_NVPERFHUD
 
-/// Enable PIX markers.
-#ifndef BGFX_CONFIG_DEBUG_PIX
-#	define BGFX_CONFIG_DEBUG_PIX BGFX_CONFIG_DEBUG
-#endif // BGFX_CONFIG_DEBUG_PIX
+/// Enable annotation for graphics debuggers.
+#ifndef BGFX_CONFIG_DEBUG_ANNOTATION
+#	define BGFX_CONFIG_DEBUG_ANNOTATION BGFX_CONFIG_DEBUG
+#endif // BGFX_CONFIG_DEBUG_ANNOTATION
 
 /// Enable DX11 object names.
 #ifndef BGFX_CONFIG_DEBUG_OBJECT_NAME
-#	define BGFX_CONFIG_DEBUG_OBJECT_NAME BGFX_CONFIG_DEBUG
+#	define BGFX_CONFIG_DEBUG_OBJECT_NAME BGFX_CONFIG_DEBUG_ANNOTATION
 #endif // BGFX_CONFIG_DEBUG_OBJECT_NAME
-
-/// Enable Metal markers.
-#ifndef BGFX_CONFIG_DEBUG_MTL
-#	define BGFX_CONFIG_DEBUG_MTL BGFX_CONFIG_DEBUG
-#endif // BGFX_CONFIG_DEBUG_MTL
 
 /// Enable uniform debug checks.
 #ifndef BGFX_CONFIG_DEBUG_UNIFORM
@@ -327,8 +317,12 @@ BX_STATIC_ASSERT(bx::isPowerOf2(BGFX_CONFIG_MAX_VIEWS), "BGFX_CONFIG_MAX_VIEWS m
 #	define BGFX_CONFIG_MIP_LOD_BIAS 0
 #endif // BGFX_CONFIG_MIP_LOD_BIAS
 
-#ifndef BGFX_CONFIG_MAX_ENCODERS
-#	define BGFX_CONFIG_MAX_ENCODERS ( (0 != BGFX_CONFIG_MULTITHREADED) ? 8 : 1)
-#endif // BGFX_CONFIG_MAX_ENCODERS
+#ifndef BGFX_CONFIG_DEFAULT_MAX_ENCODERS
+#	define BGFX_CONFIG_DEFAULT_MAX_ENCODERS ( (0 != BGFX_CONFIG_MULTITHREADED) ? 8 : 1)
+#endif // BGFX_CONFIG_DEFAULT_MAX_ENCODERS
+
+#ifndef BGFX_CONFIG_MAX_BACK_BUFFERS
+#	define BGFX_CONFIG_MAX_BACK_BUFFERS 4
+#endif // BGFX_CONFIG_MAX_BACK_BUFFERS
 
 #endif // BGFX_CONFIG_H_HEADER_GUARD

@@ -1,7 +1,7 @@
 //
 // Copyright (C) 2002-2005  3Dlabs Inc. Ltd.
 // Copyright (C) 2013-2016 LunarG, Inc.
-// Copyright (C) 2015-2017 Google, Inc.
+// Copyright (C) 2015-2018 Google, Inc.
 //
 // All rights reserved.
 //
@@ -66,6 +66,11 @@
 #include "reflection.h"
 #include "iomapper.h"
 #include "Initialize.h"
+
+// TODO: this really shouldn't be here, it is only because of the trial addition
+// of printing pre-processed tokens, which requires knowing the string literal
+// token to print ", but none of that seems appropriate for this file.
+#include "preprocessor/PpTokens.h"
 
 namespace { // anonymous namespace for file-local functions and symbols
 
@@ -342,6 +347,36 @@ bool InitializeSymbolTables(TInfoSink& infoSink, TSymbolTable** commonTable,  TS
         InitializeStageSymbolTable(*builtInParseables, version, profile, spvVersion, EShLangCompute, source,
                                    infoSink, commonTable, symbolTables);
 
+#ifdef NV_EXTENSIONS
+    // check for ray tracing stages
+    if (profile != EEsProfile && version >= 450) {
+        InitializeStageSymbolTable(*builtInParseables, version, profile, spvVersion, EShLangRayGenNV, source,
+            infoSink, commonTable, symbolTables);
+        InitializeStageSymbolTable(*builtInParseables, version, profile, spvVersion, EShLangIntersectNV, source,
+            infoSink, commonTable, symbolTables);
+        InitializeStageSymbolTable(*builtInParseables, version, profile, spvVersion, EShLangAnyHitNV, source,
+            infoSink, commonTable, symbolTables);
+        InitializeStageSymbolTable(*builtInParseables, version, profile, spvVersion, EShLangClosestHitNV, source,
+            infoSink, commonTable, symbolTables);
+        InitializeStageSymbolTable(*builtInParseables, version, profile, spvVersion, EShLangMissNV, source,
+            infoSink, commonTable, symbolTables);
+        InitializeStageSymbolTable(*builtInParseables, version, profile, spvVersion, EShLangCallableNV, source,
+            infoSink, commonTable, symbolTables);
+    }
+
+    // check for mesh
+    if ((profile != EEsProfile && version >= 450) ||
+        (profile == EEsProfile && version >= 320))
+        InitializeStageSymbolTable(*builtInParseables, version, profile, spvVersion, EShLangMeshNV, source,
+                                   infoSink, commonTable, symbolTables);
+
+    // check for task
+    if ((profile != EEsProfile && version >= 450) ||
+        (profile == EEsProfile && version >= 320))
+        InitializeStageSymbolTable(*builtInParseables, version, profile, spvVersion, EShLangTaskNV, source,
+                                   infoSink, commonTable, symbolTables);
+#endif
+
     return true;
 }
 
@@ -565,6 +600,28 @@ bool DeduceVersionProfile(TInfoSink& infoSink, EShLanguage stage, bool versionNo
             version = profile == EEsProfile ? 310 : 420;
         }
         break;
+#ifdef NV_EXTENSIONS
+    case EShLangRayGenNV:
+    case EShLangIntersectNV:
+    case EShLangAnyHitNV:
+    case EShLangClosestHitNV:
+    case EShLangMissNV:
+    case EShLangCallableNV:
+        if (profile == EEsProfile || version < 460) {
+            correct = false;
+            infoSink.info.message(EPrefixError, "#version: ray tracing shaders require non-es profile with version 460 or above");
+            version = 460;
+        }
+        break;
+    case EShLangMeshNV:
+    case EShLangTaskNV:
+        if ((profile == EEsProfile && version < 320) ||
+            (profile != EEsProfile && version < 450)) {
+            correct = false;
+            infoSink.info.message(EPrefixError, "#version: mesh/task shaders require es profile with version 320 or above, or non-es profile with version 450 or above");
+            version = profile == EEsProfile ? 320 : 450;
+        }
+#endif
     default:
         break;
     }
@@ -744,9 +801,9 @@ bool ProcessDeferred(
     const int numPre = 2;
     const int numPost = requireNonempty? 1 : 0;
     const int numTotal = numPre + numStrings + numPost;
-    size_t* lengths = new size_t[numTotal];
-    const char** strings = new const char*[numTotal];
-    const char** names = new const char*[numTotal];
+    std::unique_ptr<size_t[]> lengths(new size_t[numTotal]);
+    std::unique_ptr<const char*[]> strings(new const char*[numTotal]);
+    std::unique_ptr<const char*[]> names(new const char*[numTotal]);
     for (int s = 0; s < numStrings; ++s) {
         strings[s + numPre] = shaderStrings[s];
         if (inputLengths == nullptr || inputLengths[s] < 0)
@@ -822,8 +879,11 @@ bool ProcessDeferred(
         intermediate.setHlslOffsets();
     if (messages & EShMsgDebugInfo) {
         intermediate.setSourceFile(names[numPre]);
-        for (int s = 0; s < numStrings; ++s)
-            intermediate.addSourceText(strings[numPre + s]);
+        for (int s = 0; s < numStrings; ++s) {
+            // The string may not be null-terminated, so make sure we provide
+            // the length along with the string.
+            intermediate.addSourceText(strings[numPre + s], lengths[numPre + s]);
+        }
     }
     SetupBuiltinSymbolTable(version, profile, spvVersion, source);
 
@@ -834,19 +894,14 @@ bool ProcessDeferred(
                                                   [stage];
 
     // Dynamically allocate the symbol table so we can control when it is deallocated WRT the pool.
-    TSymbolTable* symbolTableMemory = new TSymbolTable;
-    TSymbolTable& symbolTable = *symbolTableMemory;
+    std::unique_ptr<TSymbolTable> symbolTable(new TSymbolTable);
     if (cachedTable)
-        symbolTable.adoptLevels(*cachedTable);
+        symbolTable->adoptLevels(*cachedTable);
 
     // Add built-in symbols that are potentially context dependent;
     // they get popped again further down.
-    if (! AddContextSpecificSymbols(resources, compiler->infoSink, symbolTable, version, profile, spvVersion,
+    if (! AddContextSpecificSymbols(resources, compiler->infoSink, *symbolTable, version, profile, spvVersion,
                                     stage, source)) {
-        delete symbolTableMemory;
-        delete [] lengths;
-        delete [] strings;
-        delete [] names;
         return false;
     }
 
@@ -854,10 +909,9 @@ bool ProcessDeferred(
     // Now we can process the full shader under proper symbols and rules.
     //
 
-    TParseContextBase* parseContext = CreateParseContext(symbolTable, intermediate, version, profile, source,
-                                                         stage, compiler->infoSink,
-                                                         spvVersion, forwardCompatible, messages, false, sourceEntryPointName);
-
+    std::unique_ptr<TParseContextBase> parseContext(CreateParseContext(*symbolTable, intermediate, version, profile, source,
+                                                    stage, compiler->infoSink,
+                                                    spvVersion, forwardCompatible, messages, false, sourceEntryPointName));
     TPpContext ppContext(*parseContext, names[numPre] ? names[numPre] : "", includer);
 
     // only GLSL (bison triggered, really) needs an externally set scan context
@@ -893,23 +947,14 @@ bool ProcessDeferred(
         lengths[postIndex] = strlen(strings[numStrings + numPre]);
         names[postIndex] = nullptr;
     }
-    TInputScanner fullInput(numStrings + numPre + numPost, strings, lengths, names, numPre, numPost);
+    TInputScanner fullInput(numStrings + numPre + numPost, strings.get(), lengths.get(), names.get(), numPre, numPost);
 
     // Push a new symbol allocation scope that will get used for the shader's globals.
-    symbolTable.push();
+    symbolTable->push();
 
     bool success = processingContext(*parseContext, ppContext, fullInput,
-                                     versionWillBeError, symbolTable,
+                                     versionWillBeError, *symbolTable,
                                      intermediate, optLevel, messages);
-
-    // Clean up the symbol table. The AST is self-sufficient now.
-    delete symbolTableMemory;
-
-    delete parseContext;
-    delete [] lengths;
-    delete [] strings;
-    delete [] names;
-
     return success;
 }
 
@@ -980,6 +1025,8 @@ private:
 // DoPreprocessing is a valid ProcessingContext template argument,
 // which only performs the preprocessing step of compilation.
 // It places the result in the "string" argument to its constructor.
+//
+// This is not an officially supported or fully working path.
 struct DoPreprocessing {
     explicit DoPreprocessing(std::string* string): outputString(string) {}
     bool operator()(TParseContextBase& parseContext, TPpContext& ppContext,
@@ -1087,7 +1134,11 @@ struct DoPreprocessing {
                 outputBuffer += ' ';
             }
             lastToken = token;
+            if (token == PpAtomConstString)
+                outputBuffer += "\"";
             outputBuffer += ppToken.name;
+            if (token == PpAtomConstString)
+                outputBuffer += "\"";
         } while (true);
         outputBuffer += '\n';
         *outputString = std::move(outputBuffer);
@@ -1137,6 +1188,9 @@ struct DoFullParse{
 // Return: True if there were no issues found in preprocessing,
 //         False if during preprocessing any unknown version, pragmas or
 //         extensions were found.
+//
+// NOTE: Doing just preprocessing to obtain a correct preprocessed shader string
+// is not an officially supported or fully working path.
 bool PreprocessDeferred(
     TCompiler* compiler,
     const char* const shaderStrings[],
@@ -1281,7 +1335,7 @@ void ShDestruct(ShHandle handle)
 //
 // Cleanup symbol tables
 //
-int __fastcall ShFinalize()
+int ShFinalize()
 {
     glslang::GetGlobalLock();
     --NumberOfClients;
@@ -1710,6 +1764,14 @@ void TShader::setAutoMapBindings(bool map)              { intermediate->setAutoM
 void TShader::setInvertY(bool invert)                   { intermediate->setInvertY(invert); }
 // Fragile: currently within one stage: simple auto-assignment of location
 void TShader::setAutoMapLocations(bool map)             { intermediate->setAutoMapLocations(map); }
+void TShader::addUniformLocationOverride(const char* name, int loc)
+{
+    intermediate->addUniformLocationOverride(name, loc);
+}
+void TShader::setUniformLocationBase(int base)
+{
+    intermediate->setUniformLocationBase(base);
+}
 // See comment above TDefaultHlslIoMapper in iomapper.cpp:
 void TShader::setHlslIoMapping(bool hlslIoMap)          { intermediate->setHlslIoMapping(hlslIoMap); }
 void TShader::setFlattenUniformArrays(bool flatten)     { intermediate->setFlattenUniformArrays(flatten); }
@@ -1741,6 +1803,9 @@ bool TShader::parse(const TBuiltInResource* builtInResources, int defaultVersion
 
 // Fill in a string with the result of preprocessing ShaderStrings
 // Returns true if all extensions, pragmas and version strings were valid.
+//
+// NOTE: Doing just preprocessing to obtain a correct preprocessed shader string
+// is not an officially supported or fully working path.
 bool TShader::preprocess(const TBuiltInResource* builtInResources,
                          int defaultVersion, EProfile defaultProfile,
                          bool forceDefaultVersionAndProfile,
@@ -1901,12 +1966,27 @@ const char* TProgram::getInfoDebugLog()
 // Reflection implementation.
 //
 
-bool TProgram::buildReflection()
+bool TProgram::buildReflection(int opts)
 {
     if (! linked || reflection)
         return false;
 
-    reflection = new TReflection;
+    int firstStage = EShLangVertex, lastStage = EShLangFragment;
+
+    if (opts & EShReflectionIntermediateIO) {
+        // if we're reflecting intermediate I/O, determine the first and last stage linked and use those as the
+        // boundaries for which stages generate pipeline inputs/outputs
+        firstStage = EShLangCount;
+        lastStage = 0;
+        for (int s = 0; s < EShLangCount; ++s) {
+            if (intermediate[s]) {
+                firstStage = std::min(firstStage, s);
+                lastStage = std::max(lastStage, s);
+            }
+        }
+    }
+
+    reflection = new TReflection((EShReflectionOptions)opts, (EShLanguage)firstStage, (EShLanguage)lastStage);
 
     for (int s = 0; s < EShLangCount; ++s) {
         if (intermediate[s]) {
@@ -1918,26 +1998,23 @@ bool TProgram::buildReflection()
     return true;
 }
 
-int TProgram::getNumLiveUniformVariables() const             { return reflection->getNumUniforms(); }
-int TProgram::getNumLiveUniformBlocks() const                { return reflection->getNumUniformBlocks(); }
-const char* TProgram::getUniformName(int index) const        { return reflection->getUniform(index).name.c_str(); }
-const char* TProgram::getUniformBlockName(int index) const   { return reflection->getUniformBlock(index).name.c_str(); }
-int TProgram::getUniformBlockSize(int index) const           { return reflection->getUniformBlock(index).size; }
-int TProgram::getUniformIndex(const char* name) const        { return reflection->getIndex(name); }
-int TProgram::getUniformBinding(int index) const             { return reflection->getUniform(index).getBinding(); }
-int TProgram::getUniformBlockBinding(int index) const        { return reflection->getUniformBlock(index).getBinding(); }
-int TProgram::getUniformBlockIndex(int index) const          { return reflection->getUniform(index).index; }
-int TProgram::getUniformBlockCounterIndex(int index) const   { return reflection->getUniformBlock(index).counterIndex; }
-int TProgram::getUniformType(int index) const                { return reflection->getUniform(index).glDefineType; }
-int TProgram::getUniformBufferOffset(int index) const        { return reflection->getUniform(index).offset; }
-int TProgram::getUniformArraySize(int index) const           { return reflection->getUniform(index).size; }
-int TProgram::getNumLiveAttributes() const                   { return reflection->getNumAttributes(); }
-const char* TProgram::getAttributeName(int index) const      { return reflection->getAttribute(index).name.c_str(); }
-int TProgram::getAttributeType(int index) const              { return reflection->getAttribute(index).glDefineType; }
-const TType* TProgram::getAttributeTType(int index) const    { return reflection->getAttribute(index).getType(); }
-const TType* TProgram::getUniformTType(int index) const      { return reflection->getUniform(index).getType(); }
-const TType* TProgram::getUniformBlockTType(int index) const { return reflection->getUniformBlock(index).getType(); }
-unsigned TProgram::getLocalSize(int dim) const               { return reflection->getLocalSize(dim); }
+unsigned TProgram::getLocalSize(int dim) const                      { return reflection->getLocalSize(dim); }
+int TProgram::getReflectionIndex(const char* name) const            { return reflection->getIndex(name); }
+
+int TProgram::getNumUniformVariables() const                          { return reflection->getNumUniforms(); }
+const TObjectReflection& TProgram::getUniform(int index) const        { return reflection->getUniform(index); }
+int TProgram::getNumUniformBlocks() const                             { return reflection->getNumUniformBlocks(); }
+const TObjectReflection& TProgram::getUniformBlock(int index) const   { return reflection->getUniformBlock(index); }
+int TProgram::getNumPipeInputs() const                                { return reflection->getNumPipeInputs(); }
+const TObjectReflection& TProgram::getPipeInput(int index) const      { return reflection->getPipeInput(index); }
+int TProgram::getNumPipeOutputs() const                               { return reflection->getNumPipeOutputs(); }
+const TObjectReflection& TProgram::getPipeOutput(int index) const     { return reflection->getPipeOutput(index); }
+int TProgram::getNumBufferVariables() const                           { return reflection->getNumBufferVariables(); }
+const TObjectReflection& TProgram::getBufferVariable(int index) const { return reflection->getBufferVariable(index); }
+int TProgram::getNumBufferBlocks() const                              { return reflection->getNumStorageBuffers(); }
+const TObjectReflection& TProgram::getBufferBlock(int index) const    { return reflection->getStorageBufferBlock(index); }
+int TProgram::getNumAtomicCounters() const                            { return reflection->getNumAtomicCounters(); }
+const TObjectReflection& TProgram::getAtomicCounter(int index) const  { return reflection->getAtomicCounter(index); }
 
 void TProgram::dumpReflection()                      { reflection->dump(); }
 

@@ -1,16 +1,11 @@
 --
--- Copyright 2010-2018 Branimir Karadzic. All rights reserved.
+-- Copyright 2010-2019 Branimir Karadzic. All rights reserved.
 -- License: https://github.com/bkaradzic/bgfx#license-bsd-2-clause
 --
 
 newoption {
 	trigger = "with-amalgamated",
 	description = "Enable amalgamated build.",
-}
-
-newoption {
-	trigger = "with-ovr",
-	description = "Enable OculusVR integration.",
 }
 
 newoption {
@@ -180,19 +175,6 @@ function exampleProjectDefaults()
 				"-framework CoreVideo",
 				"-framework IOKit",
 			}
-
-		configuration {}
-	end
-
-	if _OPTIONS["with-ovr"] then
-		configuration { "x32" }
-			libdirs { path.join("$(OVR_DIR)/LibOVR/Lib/Windows/Win32/Release", _ACTION) }
-
-		configuration { "x64" }
-			libdirs { path.join("$(OVR_DIR)/LibOVR/Lib/Windows/x64/Release", _ACTION) }
-
-		configuration { "x32 or x64" }
-			links { "libovr" }
 
 		configuration {}
 	end
@@ -465,6 +447,9 @@ or _OPTIONS["with-combined-examples"] then
 		, "35-dynamic"
 		, "36-sky"
 		, "37-gpudrivenrendering"
+		, "38-bloom"
+		, "39-assao"
+		, "40-svt"
 		)
 
 	-- C99 source doesn't compile under WinRT settings
